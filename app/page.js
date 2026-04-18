@@ -1,144 +1,135 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 
-const STARTERS = [
-  'What have I saved about AI?',
-  'Summarise all my ideas',
-  'What did I learn this week?',
-  'Find my notes on productivity',
-]
+const TYPE_LABELS = { note: 'Note', url: 'URL', voice: 'Voice', pdf: 'PDF' }
+const TYPE_TAGS = { note: 'tag-note', url: 'tag-url', voice: 'tag-voice', pdf: 'tag-pdf' }
 
-export default function ChatPage() {
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const bottomRef = useRef()
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr)
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+export default function Home() {
+  const [notes, setNotes] = useState([])
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  async function send(text) {
-    const msg = text || input.trim()
-    if (!msg || loading) return
-    setInput('')
+  useEffect(() => { fetchNotes() }, [])
 
-    const userMsg = { role: 'user', content: msg }
-    const newMessages = [...messages, userMsg]
-    setMessages(newMessages)
+  async function fetchNotes() {
     setLoading(true)
-
+    setError(null)
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: messages })
-      })
+      const res = await fetch('/api/notes', { cache: 'no-store' })
       const data = await res.json()
-      setMessages([...newMessages, {
-        role: 'assistant',
-        content: data.reply || data.error || 'Something went wrong.',
-        sources: data.sources
-      }])
+      if (data.error) {
+        setError(data.error)
+      } else {
+        setNotes(data.notes || [])
+      }
     } catch (e) {
-      setMessages([...newMessages, { role: 'assistant', content: 'Error: ' + e.message }])
+      setError(e.message)
     }
     setLoading(false)
   }
 
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
+  async function deleteNote(id) {
+    await fetch('/api/notes', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+    setNotes(notes.filter(n => n.id !== id))
   }
 
+  const filtered = notes.filter(n => {
+    const matchType = filter === 'all' || n.type === filter
+    const matchSearch = n.content.toLowerCase().includes(search.toLowerCase())
+    return matchType && matchSearch
+  })
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', maxWidth: 480, margin: '0 auto' }}>
-      <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-        <div className="page-title">Ask your Brain</div>
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Powered by your saved notes</div>
+    <div className="page">
+      <div className="page-header">
+        <span className="page-title">Second Brain</span>
+        <span style={{ fontSize: 13, color: 'var(--muted)' }}>{notes.length} notes</span>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '80px' }}>
-        {messages.length === 0 && (
-          <div>
-            <div style={{ textAlign: 'center', padding: '30px 0 24px' }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>🧠</div>
-              <div style={{ fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>Ask anything about your notes</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>I'll search your brain and answer</div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {STARTERS.map(s => (
-                <button key={s} onClick={() => send(s)}
-                  style={{
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    borderRadius: 12, padding: '11px 14px', color: 'var(--text)',
-                    fontSize: 14, cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s'
-                  }}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+      <input
+        className="input"
+        placeholder="Search your notes..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ marginBottom: 12 }}
+      />
 
-        {messages.map((m, i) => (
-          <div key={i} style={{ marginBottom: 14 }}>
-            {m.role === 'user' ? (
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <div className="bubble-user">{m.content}</div>
-              </div>
-            ) : (
-              <div>
-                <div className="bubble-ai">{m.content}</div>
-                {m.sources > 0 && (
-                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, marginLeft: 4 }}>
-                    searched {m.sources} notes
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {loading && (
-          <div className="bubble-ai" style={{ display: 'inline-block' }}>
-            <span style={{ color: 'var(--muted)' }}>Thinking...</span>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      <div style={{
-        position: 'fixed', bottom: 60, left: '50%', transform: 'translateX(-50%)',
-        width: '100%', maxWidth: 480, padding: '10px 16px',
-        background: 'var(--bg)', borderTop: '1px solid var(--border)'
-      }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            className="input"
-            placeholder="Ask your brain..."
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            style={{ flex: 1 }}
-          />
-          <button
-            onClick={() => send()}
-            disabled={loading || !input.trim()}
-            style={{
-              background: 'var(--accent)', border: 'none', borderRadius: 12,
-              width: 46, height: 46, cursor: 'pointer', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              opacity: loading || !input.trim() ? 0.5 : 1
-            }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {['all', 'note', 'url', 'voice', 'pdf'].map(f => (
+          <button key={f} className={`btn-ghost ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
-        </div>
+        ))}
       </div>
+
+      {loading && (
+        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 0' }}>Loading your brain...</div>
+      )}
+
+      {error && (
+        <div style={{ background: '#2a1010', border: '1px solid #a32d2d', borderRadius: 12, padding: '12px 16px', color: '#f09595', fontSize: 13, marginBottom: 12 }}>
+          Error: {error}
+        </div>
+      )}
+
+      {!loading && !error && filtered.length === 0 && (
+        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '60px 0' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🧠</div>
+          <div style={{ fontSize: 16, marginBottom: 8 }}>Your brain is empty</div>
+          <Link href="/add" style={{ color: 'var(--accent)', fontSize: 14 }}>Add your first note →</Link>
+        </div>
+      )}
+
+      {filtered.map(note => (
+        <div key={note.id} className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <span className={`tag ${TYPE_TAGS[note.type] || 'tag-note'}`}>
+              {TYPE_LABELS[note.type] || 'Note'}
+            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{timeAgo(note.created_at)}</span>
+              <button
+                onClick={() => deleteNote(note.id)}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+              >×</button>
+            </div>
+          </div>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word' }}>
+            {note.content.length > 200 ? note.content.slice(0, 200) + '...' : note.content}
+          </p>
+          {note.source_url && (
+            <a href={note.source_url} target="_blank" rel="noreferrer"
+              style={{ fontSize: 11, color: 'var(--accent)', marginTop: 6, display: 'block', wordBreak: 'break-all' }}>
+              {note.source_url}
+            </a>
+          )}
+        </div>
+      ))}
+
+      <button onClick={fetchNotes} style={{
+        width: '100%', padding: '10px', marginTop: 8,
+        background: 'transparent', border: '1px solid var(--border)',
+        borderRadius: 12, color: 'var(--muted)', fontSize: 13, cursor: 'pointer'
+      }}>
+        Refresh notes
+      </button>
     </div>
   )
 }
