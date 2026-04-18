@@ -6,7 +6,7 @@ export async function POST(request) {
     const { message, history } = await request.json()
     if (!message) return Response.json({ error: 'Message is required' }, { status: 400 })
 
-    // Search notes
+    // Search notes using vector similarity
     const embedding = await embedText(message)
     const { data: results, error } = await supabase.rpc('match_notes', {
       query_embedding: embedding,
@@ -18,15 +18,15 @@ export async function POST(request) {
       ? results.map((r, i) => `[Note ${i + 1}]: ${r.content}`).join('\n\n')
       : 'No relevant notes found.'
 
-    // Build Gemini request — no system_instruction, put context in first user message
+    // Build request to Gemini
     const contents = [
       {
         role: 'user',
-        parts: [{ text: `You are a personal AI assistant. Answer questions using ONLY these saved notes:\n\n${context}\n\nQuestion: ${message}` }]
+        parts: [{ text: `You are a personal AI assistant for a Second Brain app. Answer the question using ONLY the saved notes below. Be conversational, helpful and concise. If the notes don't contain relevant info, say so honestly.\n\nSAVED NOTES:\n${context}\n\nQUESTION: ${message}` }]
       }
     ]
 
-const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${process.env.GEMINI_API_KEY}`
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -41,9 +41,6 @@ const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1
     })
 
     const data = await response.json()
-
-    // Log the full response to debug
-    console.log('Gemini response:', JSON.stringify(data))
 
     if (!response.ok) {
       return Response.json({ error: `Gemini API error: ${JSON.stringify(data)}` }, { status: 500 })
