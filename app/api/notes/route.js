@@ -21,14 +21,20 @@ export async function POST(request) {
 
 export async function GET() {
   try {
+    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
     const { data, error } = await supabase
       .from('notes')
       .select('id, content, type, source_url, created_at')
       .order('created_at', { ascending: false })
 
-    if (error) return Response.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('Supabase error:', error)
+      return Response.json({ error: error.message }, { status: 500 })
+    }
+    console.log('Notes fetched:', data?.length)
     return Response.json({ notes: data })
   } catch (e) {
+    console.error('Catch error:', e)
     return Response.json({ error: e.message }, { status: 500 })
   }
 }
