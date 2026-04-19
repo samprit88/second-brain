@@ -23,8 +23,7 @@ export async function POST(request) {
         parts: [{ text: `You are a personal AI assistant for a Second Brain app. Answer using ONLY these saved notes:\n\n${context}\n\nQuestion: ${message}` }]
       }
     ]
-
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${process.env.GEMINI_API_KEY}``
 
     const response = await fetch(apiUrl, {
       method: 'POST',
